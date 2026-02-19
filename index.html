@@ -14,158 +14,131 @@
 <!-- ✅ إضافة مكتبة canvas-confetti للاحتفال بالحجز الناجح ✅ -->
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-<!-- 🔥 FIREBASE CORRECT CONNECTION - النسخة الحديثة 10.7.1 مع الإعدادات الحقيقية 🔥 -->
-<script type="module">
-  // استيراد مكتبات Firebase بالإصدار المستقر 10.7.1
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { 
-    getFirestore, 
-    collection, 
-    addDoc, 
-    getDocs, 
-    deleteDoc, 
-    doc, 
-    query, 
-    orderBy 
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  // ✅ إضافة وحدة المصادقة (Auth)
-  import { 
-    getAuth, 
-    signInWithEmailAndPassword, 
-    signOut, 
-    onAuthStateChanged 
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+<!-- ✅ استيراد مكتبة Supabase (تم التحديث) ✅ -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/umd/supabase.js"></script>
 
-  // ✅ الإعدادات الحقيقية الخاصة بمشروعك - تم تحديثها
-  const firebaseConfig = {
-    apiKey: "AIzaSyBC-A1-x33dNoqtnbcq4rEB6rHKEH4SS6o",
-    authDomain: "clinicbooking-4dd0f.firebaseapp.com",
-    projectId: "clinicbooking-4dd0f",
-    storageBucket: "clinicbooking-4dd0f.firebasestorage.app",
-    messagingSenderId: "556388720879",
-    appId: "1:556388720879:web:3bb8c862b922213684bb1a"
+<script>
+  // بيانات مشروعك الصحيحة التي أرسلتها
+  const SB_URL = "https://wcrnofmkmorqlmxzadkj.supabase.co";
+  const SB_KEY = "sb_publishable_xGG6Zdi5uo3sy_trep_GFQ_AAIduuZF";
+  
+  // تهيئة العميل
+  const supabase = window.supabase.createClient(SB_URL, SB_KEY);
+
+  // ✅ هذه هي الدالة التي تجعل الزر "ينطق"
+  window.loginAdmin = async function(email, password) {
+    // تحديد الزر لتغيير شكله أثناء التحميل
+    const loginBtn = document.querySelector('#adminLoginForm .nav-btn');
+    
+    if (!email || !password) {
+        showToast("يرجى إدخال البريد وكلمة المرور", "error");
+        return;
+    }
+
+    loginBtn.disabled = true;
+    loginBtn.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> جاري التحقق...`;
+
+    try {
+      let finalEmail = email.trim();
+      if (finalEmail === "admin") { finalEmail = "admin@clinic.com"; }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: finalEmail,
+        password: password
+      });
+
+      if (error) throw error;
+      
+      window.isAdminLoggedIn = true;
+      showToast("مرحباً بك دكتور، تم الدخول بنجاح", "success");
+      renderAdminUI(true); // دالة إظهار لوحة التحكم
+    } catch (error) {
+      console.error("Login Error:", error.message);
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = `دخول`;
+      showToast("خطأ: تأكد من البيانات", "error");
+    }
   };
 
-  // تهيئة Firebase
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  // ✅ تهيئة المصادقة
-  const auth = getAuth(app);
-
-  // ✅ دالة حفظ الحجز في Firebase (تم تعديلها حسب الطلب)
+  // ✅ 1. دالة حفظ الحجز في Supabase (تم التعديل هنا - السطر 61 تقريباً)
   window.saveAppointmentToFirebase = async (appointmentData) => {
     try {
-      // 1. إرسال البيانات بدون ID يدوي
-      const docRef = await addDoc(collection(db, "appointments"), {
-        ...appointmentData,
-        createdAt: new Date(),
-        status: "نشط"
-      });
-      
-      console.log("✅ تم الحفظ في Firebase بالمعرف الحقيقي: ", docRef.id);
-      return docRef.id; // نرجع المعرف الحقيقي الذي صنعه جوجل
+      const { data, error } = await supabase
+        .from('patients')
+        .insert([{ 
+          name: appointmentData.name, 
+          phone: appointmentData.phone, 
+          service: appointmentData.service, 
+          date: appointmentData.date,
+          fullDate: appointmentData.fullDate // 👈 هذا هو السطر الجديد الذي أضفناه
+        }])
+        .select();
+
+      if (error) throw error;
+      return data[0].id; 
     } catch (e) {
-      console.error("❌ خطأ في الحفظ: ", e);
+      console.error("❌ خطأ في الحفظ:", e.message);
+      showToast("فشل الحفظ في قاعدة البيانات", "error");
       return null;
     }
   };
 
-  // ✅ دالة جلب جميع الحجوزات من Firebase
+  // ✅ 2. دالة جلب البيانات من Supabase
   window.loadAppointmentsFromFirebase = async () => {
     try {
-      const q = query(collection(db, "appointments"), orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const appointments = [];
-      querySnapshot.forEach((doc) => {
-        appointments.push({ id: doc.id, ...doc.data() });
-      });
-      // حفظ نسخة احتياطية في localStorage
-      localStorage.setItem('clinic_data', JSON.stringify(appointments));
-      console.log(`✅ تم جلب ${appointments.length} حجز من Firebase`);
-      return appointments;
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      localStorage.setItem('clinic_data', JSON.stringify(data));
+      return data;
     } catch (e) {
-      console.error("❌ خطأ في الجلب: ", e);
+      console.error("❌ خطأ في الجلب:", e.message);
       return [];
     }
   };
 
-  // ✅ دالة حذف حجز من Firebase
+  // ✅ 3. دالة حذف حجز من Supabase
   window.deleteAppointmentFromFirebase = async (id) => {
     try {
-      await deleteDoc(doc(db, "appointments", id));
-      console.log("✅ تم حذف الحجز من Firebase");
+      const { error } = await supabase
+        .from('patients')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
       return true;
     } catch (e) {
-      console.error("❌ خطأ في الحذف: ", e);
+      console.error("❌ خطأ في الحذف:", e.message);
       return false;
     }
   };
 
-  // ✅ دالة تسجيل الدخول المطورة
-  window.loginAdmin = async (userInput, password) => {
-    const loginBtn = document.querySelector('#adminLoginForm .nav-btn');
-    const originalText = `<i class="fas fa-sign-in-alt"></i> دخول`;
-
-    const cleanInput = userInput.trim();
-    if (!cleanInput || !password) {
-        showToast("يرجى إدخال البيانات المطلوبة", "error");
-        return;
-    }
-
-    loginBtn.disabled = true; // تعطيل الزر مؤقتاً
-    loginBtn.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> جاري التحقق...`;
-
-    const finalEmail = cleanInput.includes('@') ? cleanInput : cleanInput + "@hope.com";
-
-    try {
-        await signInWithEmailAndPassword(auth, finalEmail, password);
-        
-        // عند النجاح: لا نحتاج لتفعيل الزر هنا لأن القسم سيختفي أصلاً
-        showToast("مرحباً بك دكتور، تم الدخول بنجاح", "success");
-    } catch (error) {
-        // ⚠️ في حال الفشل: يجب إعادة الزر للعمل فوراً
-        console.error("خطأ:", error.code);
-        loginBtn.disabled = false; 
-        loginBtn.innerHTML = originalText;
-        
-        let errorMsg = "خطأ في الاسم أو كلمة السر";
-        if (error.code === 'auth/user-not-found') errorMsg = "المستخدم غير مسجل";
-        if (error.code === 'auth/wrong-password') errorMsg = "كلمة المرور خاطئة";
-        showToast(errorMsg, "error");
-    }
-  };
-
-  // ✅ دالة تسجيل الخروج (المسؤولة عن تصفير البيانات)
+  // ✅ 5. تسجيل الخروج
   window.logoutAdmin = async () => {
-    try {
-      await signOut(auth);
-      
-      // 1. إعادة الزر لحالته الطبيعية (تفعيله وتغيير النص)
-      const loginBtn = document.querySelector('#adminLoginForm .nav-btn');
-      if (loginBtn) {
-          loginBtn.disabled = false;
-          loginBtn.innerHTML = `<i class="fas fa-sign-in-alt"></i> دخول`;
-          loginBtn.style.background = ""; // إعادة اللون الأصلي
-      }
-
-      // 2. مسح الكلام المكتوب في الإيميل وكلمة السر
-      document.getElementById('adminEmail').value = "";
-      document.getElementById('adminPass').value = "";
-
-      window.isAdminLoggedIn = false;
-      renderAdminUI(false);
-      showToast("تم تسجيل الخروج وتأمين اللوحة", "success");
-    } catch (error) {
-      console.error("❌ خطأ:", error);
+    await supabase.auth.signOut();
+    window.isAdminLoggedIn = false;
+    
+    const loginBtn = document.querySelector('#adminLoginForm .nav-btn');
+    if (loginBtn) {
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = `<i class="fas fa-sign-in-alt"></i> دخول`;
     }
+
+    document.getElementById('adminEmail').value = "";
+    document.getElementById('adminPass').value = "";
+
+    renderAdminUI(false);
+    showToast("تم تسجيل الخروج", "success");
   };
 
   // ✅ مراقبة حالة تسجيل الدخول
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      console.log("✅ المستخدم مسجل الدخول:", user.email);
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (session) {
+      console.log("✅ المستخدم مسجل الدخول:", session.user.email);
       window.isAdminLoggedIn = true;
-      // إذا كان قسم الإدارة ظاهراً، حدث الواجهة
       if (document.getElementById('admin').classList.contains('active')) {
         if (typeof renderAdminUI === 'function') renderAdminUI(true);
       }
@@ -176,32 +149,11 @@
     }
   });
 
-  // ✅ دالة فحص الاتصال (اختياري)
-  window.testFirebaseConnection = async () => {
-    try {
-      const docRef = await addDoc(collection(db, "test_connections"), {
-        message: "✅ تم الربط بنجاح يا علاء!",
-        time: new Date(),
-        userAgent: navigator.userAgent
-      });
-      console.log("✅ Firebase متصل بنجاح، معرف الاختبار: ", docRef.id);
-      alert("🎉 مبروك! الموقع ارتبط بقاعدة البيانات بنجاح");
-    } catch (e) {
-      console.error("❌ فشل الاتصال: ", e);
-      alert("⚠️ حدث خطأ في الاتصال بقاعدة البيانات");
-    }
-  };
-
-  // تصدير db لاستخدامه في أجزاء أخرى
-  window.db = db;
-  
-  // تأخير بسيط للتأكد من تحميل كل شيء
+  // ✅ تأخير بسيط لجلب البيانات عند التحميل
   setTimeout(() => {
-    // ✅ حذفنا سطر الفحص التلقائي لكي لا يملأ قاعدة البيانات بيانات وهمية
-    window.loadAppointmentsFromFirebase(); // أبقينا هذا السطر لأنه هو الذي يجلب مواعيد المرضى الحقيقية
+    window.loadAppointmentsFromFirebase();
   }, 1000);
 </script>
-<!-- 🔥 نهاية إضافة Firebase المصححة 🔥 -->
 
 <style>
 :root{
@@ -944,7 +896,7 @@ body.dark-mode .review-card { background: #334155; }
 /* --- إضافة التنسيقات الجديدة للزر الاحترافي --- */
 /* حالة الزر أثناء المعالجة */
 .nav-btn:disabled {
-    background: #94a3b8 !important; /* لون رمادي هادئ */
+    background: #94a3b8 !important;
     cursor: not-allowed;
     opacity: 0.8;
     transform: none !important;
@@ -1027,7 +979,7 @@ body.dark-mode .review-card { background: #334155; }
 #adminLoginForm .nav-btn {
     position: relative;
     overflow: hidden;
-    height: 55px; /* طول الزر ليكون أوضح */
+    height: 55px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1308,7 +1260,8 @@ body.dark-mode .review-card { background: #334155; }
         <div class="input-group">
             <input type="password" id="adminPass" placeholder="كلمة المرور">
         </div>
-        <button onclick="loginAdmin(document.getElementById('adminEmail').value, document.getElementById('adminPass').value)" class="nav-btn" style="width: 100%; border: none;">دخول</button>
+        <!-- ✅ تم تعديل الزر ✅ -->
+        <button type="button" onclick="window.loginAdmin(document.getElementById('adminEmail').value, document.getElementById('adminPass').value)" class="nav-btn" style="width: 100%; border: none; cursor: pointer;">دخول</button>
     </div>
 
     <!-- لوحة التحكم (مخفية في البداية) -->
@@ -1353,7 +1306,7 @@ body.dark-mode .review-card { background: #334155; }
     </div>
 </div>
 
-<!-- ✅ مودال تأكيد الحذف الاحترافي (تم إضافته) ✅ -->
+<!-- ✅ مودال تأكيد الحذف الاحترافي ✅ -->
 <div id="deleteConfirmModal" class="modal-overlay" style="display: none;">
     <div class="modal-card" style="border-top: 10px solid #ef4444; position: relative; overflow: hidden;">
         <div style="position: absolute; top: -20px; left: -20px; font-size: 10rem; color: rgba(239, 68, 68, 0.05); transform: rotate(-15deg); z-index: 0;">
@@ -1499,7 +1452,6 @@ window.renderAdminUI = function(isLoggedIn) {
     } else {
         loginForm.style.display = 'block';
         dashboard.style.display = 'none';
-        // ضمان إضافي لمسح الحقول عند كل عملية تبديل للواجهة
         if(document.getElementById('adminEmail')) document.getElementById('adminEmail').value = "";
         if(document.getElementById('adminPass')) document.getElementById('adminPass').value = "";
     }
@@ -1518,11 +1470,9 @@ function showSection(id){
         initTimeSlots();
     } else if(id === 'admin') {
         document.getElementById('nav-admin').classList.add('active');
-        // استخدم window.isAdminLoggedIn للتحقق من حالة الدخول
         if (typeof renderAdminUI === 'function') {
             renderAdminUI(window.isAdminLoggedIn);
         }
-        // إذا كان مسجل الدخول، قم بتحديث البيانات
         if (window.isAdminLoggedIn) {
             render();
         }
@@ -1658,45 +1608,35 @@ function prepareReview() {
 
 // ✅ دالة لتصفير نموذج الحجز تماماً
 function resetBookingForm() {
-    // 1. تصفير الحقول النصية
     document.getElementById('appointmentForm').reset();
-    
-    // 2. إعادة الـ Stepper للخطوة الأولى
     currentStep = 0;
     updateStepper();
-    
-    // 3. إعادة تعيين الخدمات (اختيار الأولى كافتراضي)
     document.querySelectorAll('.service-option').forEach(opt => opt.classList.remove('selected'));
     const firstService = document.querySelector('.service-option');
     if(firstService) firstService.classList.add('selected');
     document.getElementById('pService').value = "استشارات عامة";
-    
-    // 4. تفريغ الوقت والتاريخ
     document.getElementById('pTime').value = "";
     document.getElementById('timeSlotsContainer').innerHTML = "";
-    
-    // 5. تحديث واجهة الإدارة إذا كانت مفتوحة
     render();
 }
 
-// ✅ دالة الحجز المحدثة (مع التعديل المطلوب)
+// ✅ دالة الحجز المحدثة (تم التعديل هنا - السطر 550 تقريباً)
 const form = document.getElementById('appointmentForm');
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    // 1. الوصول للزر وتغيير حالته
     const submitBtn = e.target.querySelector('button[type="submit"]');
-    const originalContent = submitBtn.innerHTML; // حفظ النص الأصلي (تأكيد الحجز)
+    const originalContent = submitBtn.innerHTML;
     
-    submitBtn.disabled = true; // منع الضغط المتكرر
+    submitBtn.disabled = true;
     submitBtn.innerHTML = `<i class="fas fa-circle-notch spinner-icon"></i> جاري تأكيد حجزك...`;
 
-    // البيانات التي سنرسلها (بدون وضع ID يدوي هنا)
     const appointmentData = {
         name: document.getElementById('pName').value,
         phone: iti.getNumber(),
         service: document.getElementById('pService').value,
         date: document.getElementById('pDate').value,
+        // 👈 هذا السطر يدمج التاريخ مع الوقت المختار ليتم إرساله لعمود fullDate
         fullDate: document.getElementById('pDate').value + " (" + document.getElementById('pTime').value + ")"
     };
     
@@ -1705,19 +1645,17 @@ form.addEventListener('submit', async (e) => {
             const realDocId = await window.saveAppointmentToFirebase(appointmentData);
             
             if(realDocId) {
-                // الآن نضيف المعرف الحقيقي للبيانات قبل حفظها في الذاكرة المحلية
                 const finalData = { id: realDocId, ...appointmentData };
                 
                 let list = JSON.parse(localStorage.getItem('clinic_data')) || [];
                 list.push(finalData);
                 localStorage.setItem('clinic_data', JSON.stringify(list));
 
-                // إطلاق القصاصات الملونة الاحتفالية
                 confetti({
-                    particleCount: 100, // عدد القصاصات
-                    spread: 70,        // مدى انتشارها
-                    origin: { y: 0.6 }, // تبدأ من منتصف الشاشة تقريباً
-                    colors: ['#0284c7', '#10b981', '#FFD700'] // ألوان متناسقة مع عيادتك
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 },
+                    colors: ['#0284c7', '#10b981', '#FFD700']
                 });
                 
                 document.getElementById('successModal').style.display = 'flex';
@@ -1728,39 +1666,33 @@ form.addEventListener('submit', async (e) => {
     } catch (error) {
         showToast("❌ حدث خطأ، حاول مرة أخرى", "error");
     } finally {
-        // 2. إعادة الزر لوضعه الطبيعي بعد الانتهاء (سواء نجح أو فشل)
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalContent;
     }
 });
 
-// ✅ دالة إغلاق المودال (مع اسم الدالة المحدث)
+// ✅ دالة إغلاق المودال
 async function closeSuccessModal() { 
     document.getElementById('successModal').style.display = 'none'; 
     showSection('home'); 
 }
 
-// ✅ دالة الحذف الجديدة (تعديل علاء المغلس) - باستخدام المودال
-// ✅ متغير مؤقت لحفظ المعرف الذي نريد حذفه
+// ✅ دالة الحذف الجديدة
 let appointmentToDeleteId = null;
 
 async function del(id) {
-    appointmentToDeleteId = id; // تخزين الـ id مؤقتاً
+    appointmentToDeleteId = id;
     const modal = document.getElementById('deleteConfirmModal');
-    modal.style.display = 'flex'; // إظهار المودال الاحترافي
-    
-    // منع السكرول في الصفحة خلف المودال
+    modal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
 }
 
-// ✅ زر التراجع (إغلاق المودال)
 document.getElementById('cancelDeleteBtn').addEventListener('click', () => {
     document.getElementById('deleteConfirmModal').style.display = 'none';
     document.body.style.overflow = 'auto';
     appointmentToDeleteId = null;
 });
 
-// ✅ زر الحذف الحقيقي (داخل المودال)
 document.getElementById('confirmDeleteBtn').addEventListener('click', async function() {
     if (!appointmentToDeleteId) return;
     
@@ -1768,16 +1700,13 @@ document.getElementById('confirmDeleteBtn').addEventListener('click', async func
     const modal = document.getElementById('deleteConfirmModal');
     const confirmBtn = this;
     
-    // تغيير شكل الزر أثناء المعالجة
     confirmBtn.disabled = true;
     confirmBtn.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> جاري الحذف...`;
 
-    // استدعاء الحذف من Firebase
     if (typeof window.deleteAppointmentFromFirebase === 'function') {
         const success = await window.deleteAppointmentFromFirebase(id);
         
         if(success) {
-            // حذف من الذاكرة المحلية
             let list = JSON.parse(localStorage.getItem('clinic_data')) || [];
             list = list.filter(item => item.id !== id);
             localStorage.setItem('clinic_data', JSON.stringify(list));
@@ -1789,7 +1718,6 @@ document.getElementById('confirmDeleteBtn').addEventListener('click', async func
         }
     }
 
-    // إغلاق المودال وإعادة الزر لحالته
     modal.style.display = 'none';
     document.body.style.overflow = 'auto';
     confirmBtn.disabled = false;
@@ -1825,7 +1753,7 @@ function render() {
             <p><i class="fas fa-stethoscope"></i> ${item.service || 'غير محدد'}</p>
             <p><i class="fas fa-calendar-alt"></i> ${item.fullDate || 'غير محدد'}</p>
             <p dir="ltr" style="text-align:right;"><i class="fas fa-phone"></i> ${item.phone || 'غير متوفر'}</p>
-            <small style="color: var(--primary);"><i class="fas fa-cloud"></i> محفوظ في Firebase</small>
+            <small style="color: var(--primary);"><i class="fas fa-cloud"></i> محفوظ في Supabase</small>
         </div>
     `}).join('');
 }
@@ -1873,7 +1801,6 @@ function handleSocialClick(element, type, url) {
     }
 }
 
-// 1. دالة لإظهار المربعات الرمادية أثناء التحميل
 function showSkeletonLoaders() {
     const container = document.getElementById('cardContainer');
     if (!container) return;
@@ -1883,15 +1810,14 @@ function showSkeletonLoaders() {
     `;
 }
 
-// 2. عند تشغيل الموقع
 window.addEventListener('load', async () => {
-    showSkeletonLoaders(); // أظهر الرمادي فوراً
+    showSkeletonLoaders();
     
     if (typeof window.loadAppointmentsFromFirebase === 'function') {
-        await window.loadAppointmentsFromFirebase(); // جلب البيانات من فيربيز
-        render(); // امسح الرمادي وضع البيانات الحقيقية
+        await window.loadAppointmentsFromFirebase();
+        render();
     }
 });
 </script>
 </body>
-</html>
+              </html>
