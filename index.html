@@ -11,25 +11,21 @@
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css">
 
-<!-- ✅ روابط سريعة من Cloudflare (تم التعديل) ✅ -->
+<!-- ✅ إضافة مكتبة canvas-confetti للاحتفال بالحجز الناجح ✅ -->
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+<!-- ✅ استيراد مكتبة Supabase من Cloudflare (تم التعديل) ✅ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.7/supabase.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/canvas-confetti/1.6.0/confetti.browser.min.js"></script>
 
 <script>
-  // استخدام بروكسي AllOrigins وهو الأقوى في فك تشفير الطلبات المحظورة (تم التعديل)
-  const SB_URL = "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://wcrnofmkmorqlmxzadkj.supabase.co");
+  // هذا الرابط سيعمل كوسيط لتجاوز الحظر في اليمن (تم التعديل)
+  const ORIGINAL_URL = "https://wcrnofmkmorqlmxzadkj.supabase.co";
+  const SB_URL = "https://api.allorigins.win/raw?url=" + encodeURIComponent(ORIGINAL_URL);
   const SB_KEY = "sb_publishable_xGG6Zdi5uo3sy_trep_GFQ_AAIduuZF";
-
-  // تهيئة العميل مع إعدادات "كسر الجدار" (تم التعديل)
+  
+  // تهيئة الاتصال بطريقة تجعل "يمن نت" تظنه طلباً عادياً (تم التعديل)
   const supabase = window.supabase.createClient(SB_URL, SB_KEY, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true
-    },
-    global: {
-      // إجبار النظام على استخدام أقصى درجات التوافق
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
-    }
+    global: { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
   });
 
   // ✅ هذه هي الدالة التي تجعل الزر "ينطق"
@@ -95,17 +91,13 @@
     }
   };
 
-  // ✅ 2. دالة جلب البيانات من Supabase (تم التعديل - نظام الجلب الصامت)
+  // ✅ 2. دالة جلب البيانات من Supabase (تم التعديل - نسخة ذكية)
   window.loadAppointmentsFromFirebase = async () => {
-    // 1. أظهر الهيكل الرمادي فوراً
-    showSkeletonLoaders();
-    
-    // 2. اعرض البيانات القديمة فوراً من الذاكرة لكي لا ينتظر المستخدم
-    const cached = JSON.parse(localStorage.getItem('clinic_data')) || [];
-    if(cached.length > 0) render();
-
-    // 3. حاول جلب البيانات الجديدة بهدوء
     try {
+      // إظهار سكيلتون (التحميل)
+      if(typeof showSkeletonLoaders === 'function') showSkeletonLoaders();
+      
+      // محاولة جلب البيانات عبر الوسيط
       const { data, error } = await supabase
         .from('patients')
         .select('*')
@@ -113,16 +105,16 @@
 
       if (error) throw error;
       
-      // إذا نجحنا، نحدث الذاكرة والواجهة
+      // حفظ البيانات في ذاكرة المتصفح لتعمل حتى لو ضعف الإنترنت
       localStorage.setItem('clinic_data', JSON.stringify(data));
-      render();
-      console.log("✅ تم تحديث البيانات بنجاح");
+      if(typeof render === 'function') render();
+      return data;
     } catch (e) {
-      console.log("⚠️ فشل التحديث التلقائي، نعمل بالذاكرة المؤقتة");
-      // لا تظهر رسالة خطأ مزعجة للمستخدم، طالما البيانات القديمة موجودة
-      if(cached.length === 0) {
-          showToast("الإنترنت ضعيف جداً، حاول لاحقاً", "error");
-      }
+      console.log("هناك حظر أو ضعف إنترنت، يتم تشغيل الذاكرة الاحتياطية");
+      // إذا فشل الاتصال، اعرض البيانات المخزنة سابقاً فوراً
+      const cached = JSON.parse(localStorage.getItem('clinic_data')) || [];
+      if(cached.length > 0 && typeof render === 'function') render();
+      return cached;
     }
   };
 
